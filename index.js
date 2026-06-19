@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 8000;
 app.use(express.json());
 app.use(cors());
 
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = process.env.MONGODB_URI;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -92,6 +92,38 @@ async function run() {
       }
     });
 
+    // Update Prompt Data
+    app.patch("/api/my-prompt/:id", async (req, res) => {
+      try {
+        const {id} = req.params;
+        const { ...updatedPrompt} = req.body;
+
+        if (!id) {
+          return res
+            .status(400)
+            .send({ success: false, message: "Prompt ID is required" });
+        }
+
+        // Convert MongoDB Object ID
+        const filter = { _id: new ObjectId(id) };
+
+        // Set Updated Data
+        const updatedDocument = {
+          $set: updatedPrompt,
+        };
+
+        // Update data on mongoDB
+        const result = await promptCollection.updateOne(filter, updatedDocument);
+        res.status(200).send(result);
+      } catch (err) {
+        res.status(500).send({
+          success: false,
+          message: "Failed to update prompt",
+          error: err.message,
+        });
+      }
+    });
+
     await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!",
@@ -112,3 +144,4 @@ app.get("/", (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
