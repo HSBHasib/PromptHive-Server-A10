@@ -37,6 +37,40 @@ async function run() {
 
     // ====================  Prompts  ====================
 
+    // Get Prompts Data
+    app.get("/api/prompts", async (req, res) => {
+      try {
+        const { userId, page } = req.query;
+
+        // Filter Based on User
+        const filter = {};
+        if (userId) {
+          filter.userId = userId;
+        }
+
+        // Pagination
+        const pageNum = parseInt(page) || 1;
+        const perPage = 4;
+        const skipItem = (pageNum - 1) * perPage;
+
+        // Get Access Data based on User and my requerment
+        const cursor = promptCollection
+          .find(filter)
+          .sort({ createdAt: -1 })
+          .skip(skipItem)
+          .limit(perPage);
+
+        const result = await cursor.toArray();
+        res.status(200).send(result);
+      } catch (err) {
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch prompts",
+          error: err.message,
+        });
+      }
+    });
+
     // Insert New Created Prompt Data on 'MongoDB'
     app.post("/api/prompts", async (req, res) => {
       try {
