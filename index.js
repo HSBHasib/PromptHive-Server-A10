@@ -95,8 +95,8 @@ async function run() {
     // Update Prompt Data
     app.patch("/api/my-prompt/:id", async (req, res) => {
       try {
-        const {id} = req.params;
-        const { ...updatedPrompt} = req.body;
+        const { id } = req.params;
+        const { ...updatedPrompt } = req.body;
 
         if (!id) {
           return res
@@ -113,12 +113,41 @@ async function run() {
         };
 
         // Update data on mongoDB
-        const result = await promptCollection.updateOne(filter, updatedDocument);
+        const result = await promptCollection.updateOne(
+          filter,
+          updatedDocument,
+        );
         res.status(200).send(result);
       } catch (err) {
         res.status(500).send({
           success: false,
           message: "Failed to update prompt",
+          error: err.message,
+        });
+      }
+    });
+
+    // Delete Prompt Data
+    app.delete("/api/my-prompt/:id", async (req, res) => {
+      try {
+        const { id } = req.params; 
+
+        // Check Is ID has or not
+        if (!id) {
+          return res
+            .status(400)
+            .send({ success: false, message: "Prompt ID is required" });
+        }
+
+        // Convert MongoDB Object ID
+        const filter = { _id: new ObjectId(id) };
+
+        const result = await promptCollection.deleteOne(filter);
+        res.status(200).send(result);
+      } catch (err) {
+        res.status(500).send({
+          success: false,
+          message: "Failed to delete prompt",
           error: err.message,
         });
       }
@@ -144,4 +173,3 @@ app.get("/", (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
-
