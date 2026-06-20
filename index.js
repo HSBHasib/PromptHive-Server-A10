@@ -34,42 +34,34 @@ async function run() {
 
     // Create or Access to DB Collections
     const promptCollection = db.collection("prompts");
+    const userCollection = db.collection("user");
+
+    // ====================  users  ====================
+    // Get All Users Data From MongoDB
+    app.get("/api/users", async (req, res) => {
+      try {
+        const { id } = req.query;
+
+        const query = {};
+
+        if (id) {
+          query._id = new ObjectId(id);
+        }
+
+        const cursor = userCollection.find(query);
+        const result = await cursor.toArray();
+
+        res.status(200).send(result);
+      } catch (err) {
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch users data",
+          error: err.message,
+        });
+      }
+    });
 
     // ====================  Prompts  ====================
-
-    // Get Prompts Data
-    // app.get("/api/prompts", async (req, res) => {
-    //   try {
-    //     const { userId, page } = req.query;
-
-    //     // Filter Based on User
-    //     const filter = {};
-    //     if (userId) {
-    //       filter.userId = userId;
-    //     }
-
-    //     // Pagination
-    //     const pageNum = parseInt(page) || 1;
-    //     const perPage = 4;
-    //     const skipItem = (pageNum - 1) * perPage;
-
-    //     // Get Access Data based on User and my requerment
-    //     const cursor = promptCollection
-    //       .find(filter)
-    //       .sort({ createdAt: -1 })
-    //       .skip(skipItem)
-    //       .limit(perPage);
-
-    //     const result = await cursor.toArray();
-    //     res.status(200).send(result);
-    //   } catch (err) {
-    //     res.status(500).send({
-    //       success: false,
-    //       message: "Failed to fetch prompts",
-    //       error: err.message,
-    //     });
-    //   }
-    // });
 
     // Get Top 6 Trending Prompts
     app.get("/api/trending-prompts", async (req, res) => {
@@ -90,11 +82,10 @@ async function run() {
       }
     });
 
-    // Get Prompts Data with Search, Filter & Pagination
+    // Get Prompts Data
     app.get("/api/prompts", async (req, res) => {
       try {
-        // Access Data that given from - 'Frontend'
-        const { userId, page, search, category, aiTool, difficulty } =
+        const { userId, page, limit, search, category, aiTool, difficulty } =
           req.query;
 
         const query = {};
@@ -108,7 +99,7 @@ async function run() {
         if (search) {
           query.$or = [
             { title: { $regex: search, $options: "i" } },
-            { tags: { $regex: search, $options: "i" } }, // tags যদি অ্যারেও হয়, তাও এটি কাজ করবে
+            { tags: { $regex: search, $options: "i" } },
             { aiTool: { $regex: search, $options: "i" } },
           ];
         }
@@ -126,26 +117,27 @@ async function run() {
           query.difficulty = difficulty;
         }
 
-        // Pagination
+        // --- Dynamic Pagination ---
         const pageNum = parseInt(page) || 1;
-        const perPage = 4;
+        const perPage = parseInt(limit) || 9;
         const skipItem = (pageNum - 1) * perPage;
 
         // Find Data Based On Condition
         const cursor = promptCollection
-          .find(query) 
-          .sort({ createdAt: -1 }) 
+          .find(query)
+          .sort({ createdAt: -1 })
           .skip(skipItem)
           .limit(perPage);
 
         const result = await cursor.toArray();
 
-        // Get Access Total Prompts Data Count
+        // Total Prompts
         const totalPrompts = await promptCollection.countDocuments(query);
 
         res.status(200).send({
           success: true,
           total: totalPrompts,
+          perPage: perPage,
           data: result,
         });
       } catch (err) {
