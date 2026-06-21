@@ -37,6 +37,7 @@ async function run() {
     const userCollection = db.collection("user");
     const reviewCollection = db.collection("reviews");
     const bookMarkCollection = db.collection("bookMarks");
+    const reportCollection = db.collection("reports");
 
     // ====================  users  ====================
     // Get All Users Data From MongoDB
@@ -393,11 +394,10 @@ async function run() {
     });
 
     // ==================== BookMarks ====================
-
-    // Get Bookmarks Data 
+    // Get Bookmarks Data
     app.get("/api/bookmarks", async (req, res) => {
       try {
-        const { userId } = req.query; 
+        const { userId } = req.query;
         let query = {};
 
         if (userId) {
@@ -445,6 +445,27 @@ async function run() {
           message: "Bookmark action failed",
           error: err.message,
         });
+      }
+    });
+
+    // ==================== Reports ====================
+    // Insert Report Data on MongoDB
+    app.post("/api/reports", async (req, res) => {
+      try {
+        const { promptId, userId, reason, details } = req.body;
+        const newReport = {
+          promptId,
+          userId,
+          reason,
+          details,
+          createdAt: new Date(),
+        };
+        const result = await reportCollection.insertOne(newReport);
+        res.status(201).send(result);
+      } catch (err) {
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to submit report" });
       }
     });
 
