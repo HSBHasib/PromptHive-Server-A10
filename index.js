@@ -35,9 +35,10 @@ async function run() {
     // Create or Access to DB Collections
     const promptCollection = db.collection("prompts");
     const userCollection = db.collection("user");
+    const reviewCollection = db.collection("reviews");
+    const bookMarkCollection = db.collection("bookMarks");
 
     // ====================  users  ====================
-
     // Get All Users Data From MongoDB
     app.get("/api/users", async (req, res) => {
       try {
@@ -145,7 +146,6 @@ async function run() {
     });
 
     // ====================  Prompts  ====================
-
     // Get Top 6 Trending Prompts
     app.get("/api/trending-prompts", async (req, res) => {
       try {
@@ -312,6 +312,22 @@ async function run() {
       }
     });
 
+    // Update Prompt CopyCount
+    app.patch("/api/prompts/copy-count/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const result = await promptCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $inc: { copyCount: 1 } },
+        );
+        res.status(200).send(result);
+      } catch (err) {
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to update copy count" });
+      }
+    });
+
     // Delete Prompt Data
     app.delete("/api/my-prompt/:id", async (req, res) => {
       try {
@@ -338,6 +354,7 @@ async function run() {
       }
     });
 
+    
     await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!",
