@@ -355,19 +355,44 @@ async function run() {
     });
 
     // ====================  Reviews  ====================
-    
+    // Get Reviews Data From MongoDB
+    app.get("/api/reviews/:promptId", async (req, res) => {
+      try {
+        const { promptId } = req.params;
+        const reviews = await reviewCollection
+          .find({ promptId })
+          .sort({ createdAt: -1 })
+          .limit(3)
+          .toArray();
+        res.status(200).send(reviews);
+      } catch (err) {
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to fetch reviews" });
+      }
+    });
 
     // Insert Review Data on MongoDB
     app.post("/api/reviews", async (req, res) => {
-      const reviewData = req.body;
-      const review = {
-        ...reviewData,
-        createdAt: new Date(),
-      };
+      try {
+        const reviewData = req.body;
+        const review = {
+          ...reviewData,
+          createdAt: new Date(),
+        };
 
-      const result = await reviewCollection.insertOne(review);
-      res.send(result);
+        const result = await reviewCollection.insertOne(review);
+        res.status(201).send({ success: true, result });
+      } catch (err) {
+        res.status(500).send({
+          success: false,
+          message: "Failed to post review",
+          error: err.message,
+        });
+      }
     });
+
+    
 
     await client.db("admin").command({ ping: 1 });
     console.log(
