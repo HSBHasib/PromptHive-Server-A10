@@ -115,7 +115,34 @@ async function run() {
       }
     });
 
-    
+    // Delete User Data From MongoDB
+    app.delete("/api/users/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        // Check Is ID has or not
+        if (!id) {
+          return res
+            .status(400)
+            .send({ success: false, message: "User ID is required" });
+        }
+
+        // Convert MongoDB Object ID
+        const filter = { _id: new ObjectId(id) };
+
+        const result = await userCollection.deleteOne(filter);
+        res.status(200).send({
+          success: result.deletedCount > 0,
+          message: "User deleted",
+        });
+      } catch (err) {
+        res.status(500).send({
+          success: false,
+          message: "Failed to delete User",
+          error: err.message,
+        });
+      }
+    });
 
     // ====================  Prompts  ====================
 
