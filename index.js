@@ -394,7 +394,24 @@ async function run() {
 
     // ==================== BookMarks ====================
 
-    
+    // Get Bookmarks Data 
+    app.get("/api/bookmarks", async (req, res) => {
+      try {
+        const { userId } = req.query; 
+        let query = {};
+
+        if (userId) {
+          query = { userId: userId };
+        }
+
+        const result = await bookMarkCollection.find(query).toArray();
+        res.status(200).send({ success: true, data: result });
+      } catch (err) {
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to fetch bookmarks" });
+      }
+    });
 
     // Insert BookMarks Data and Delete and Update Prompts BookMarks Data
     app.post("/api/bookmarks", async (req, res) => {
