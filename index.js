@@ -354,7 +354,21 @@ async function run() {
       }
     });
 
+    // ====================  Reviews  ====================
     
+
+    // Insert Review Data on MongoDB
+    app.post("/api/reviews", async (req, res) => {
+      const reviewData = req.body;
+      const review = {
+        ...reviewData,
+        createdAt: new Date(),
+      };
+
+      const result = await reviewCollection.insertOne(review);
+      res.send(result);
+    });
+
     await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!",
