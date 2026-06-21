@@ -37,29 +37,85 @@ async function run() {
     const userCollection = db.collection("user");
 
     // ====================  users  ====================
+
     // Get All Users Data From MongoDB
     app.get("/api/users", async (req, res) => {
       try {
-        const { id } = req.query;
+        const { userId, page, limit } = req.query;
 
         const query = {};
 
-        if (id) {
-          query._id = new ObjectId(id);
+        if (userId) {
+          query._id = new ObjectId(userId);
         }
 
-        const cursor = userCollection.find(query);
+        // --- Dynamic Pagination ---
+        const pageNum = parseInt(page) || 1;
+        const perPage = parseInt(limit) || 4;
+        const skipItem = (pageNum - 1) * perPage;
+
+        const cursor = userCollection
+          .find(query)
+          .sort({ createdAt: -1 })
+          .skip(skipItem)
+          .limit(perPage);
+
         const result = await cursor.toArray();
 
-        res.status(200).send(result);
+        // Total Count
+        const totalUsers = await userCollection.countDocuments(query);
+
+        res.status(200).send({
+          success: true,
+          total: totalUsers,
+          perPage: perPage,
+          data: result,
+        });
       } catch (err) {
         res.status(500).send({
           success: false,
-          message: "Failed to fetch users data",
+          message: "Failed to fetch users",
           error: err.message,
         });
       }
     });
+
+    // Update User Data on MongoDB
+    app.patch("/api/users/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const user = req.body;
+
+        if (!id) {
+          return res
+            .status(400)
+            .send({ success: false, message: "Prompt ID is required" });
+        }
+
+        // Convert MongoDB Object ID
+        const filter = { _id: new ObjectId(id) };
+
+        // Set Updated Data
+        const updatedDocument = {
+          // $set: user,
+          $set: {
+            role: user.role,
+          },
+        };
+
+        // Update data on mongoDB
+        const result = await userCollection.updateOne(filter, updatedDocument);
+        res.status(200).send(result);
+      } catch (err) {
+        res.status(500).send({
+          success: false,
+          message: "Failed to update prompt",
+          error: err.message,
+        });
+      }
+    });
+
+    
 
     // ====================  Prompts  ====================
 
@@ -134,9 +190,33 @@ async function run() {
         // Total Prompts
         const totalPrompts = await promptCollection.countDocuments(query);
 
+        // Count Total Copies and BookMarks
+        const totalCopiesResult = await promptCollection
+          .aggregate([
+            { $match: query },
+            {
+              $group: {
+                _id: null,
+                totalCopies: { $sum: "$copyCount" },
+                totalBookmarks: { $sum: "$bookMark" },
+              },
+            },
+          ])
+          .toArray();
+
+        const totalCopies =
+          totalCopiesResult.length > 0 ? totalCopiesResult[0].totalCopies : 0;
+
+        const totalBookM =
+          totalCopiesResult.length > 0
+            ? totalCopiesResult[0].totalBookmarks
+            : 0;
+
         res.status(200).send({
           success: true,
           total: totalPrompts,
+          totalCopies,
+          totalBookMarks: totalBookM,
           perPage: perPage,
           data: result,
         });
