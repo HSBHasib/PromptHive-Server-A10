@@ -365,7 +365,8 @@ async function run() {
           .sort({ createdAt: -1 })
           .limit(3)
           .toArray();
-        res.status(200).send(reviews);
+        const count = await reviewCollection.countDocuments({ promptId });
+        res.status(200).send({reviews, totalReview: count});
       } catch (err) {
         res
           .status(500)
