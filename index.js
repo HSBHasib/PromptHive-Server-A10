@@ -392,7 +392,44 @@ async function run() {
       }
     });
 
+    // ==================== BookMarks ====================
+
     
+
+    // Insert BookMarks Data and Delete and Update Prompts BookMarks Data
+    app.post("/api/bookmarks", async (req, res) => {
+      try {
+        const { promptId, userId } = req.body;
+
+        const isExits = await bookMarkCollection.findOne({ promptId, userId });
+
+        if (isExits) {
+          await bookMarkCollection.deleteOne({ _id: isExits._id });
+          await promptCollection.updateOne(
+            { _id: new ObjectId(promptId) },
+            { $inc: { bookMark: -1 } },
+          );
+          res.status(200).send({ status: "removed" });
+        } else {
+          await bookMarkCollection.insertOne({
+            promptId,
+            userId,
+            createdAt: new Date(),
+          });
+          await promptCollection.updateOne(
+            { _id: new ObjectId(promptId) },
+            { $inc: { bookMark: 1 } },
+          );
+          res.status(200).send({ status: "added" });
+        }
+      } catch (err) {
+        res.status(500).send({
+          success: false,
+          message: "Bookmark action failed",
+          error: err.message,
+        });
+      }
+    });
 
     await client.db("admin").command({ ping: 1 });
     console.log(
