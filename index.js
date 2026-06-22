@@ -357,16 +357,26 @@ async function run() {
 
     // ====================  Reviews  ====================
     // Get Reviews Data From MongoDB
-    app.get("/api/reviews/:promptId", async (req, res) => {
+    app.get("/api/reviews", async (req, res) => {
       try {
-        const { promptId } = req.params;
+        const { promptId, userId } = req.query;
+
+        let query = {};
+        if (promptId) {
+          query.promptId = promptId;
+        } else if (userId) {
+          query.userId = userId;
+        }
+
         const reviews = await reviewCollection
-          .find({ promptId })
+          .find(query)
           .sort({ createdAt: -1 })
-          .limit(3)
+          .limit(promptId ? 3 : 0)
           .toArray();
-        const count = await reviewCollection.countDocuments({ promptId });
-        res.status(200).send({reviews, totalReview: count});
+
+        const count = await reviewCollection.countDocuments(query);
+
+        res.status(200).send({ reviews, totalReview: count });
       } catch (err) {
         res
           .status(500)
@@ -450,6 +460,18 @@ async function run() {
     });
 
     // ==================== Reports ====================
+    // Get Reported Data From MongoDB
+    app.get("/api/reports", async (req, res) => {
+      try {
+        const result = await reportCollection.find().toArray();
+        res.status(200).send( result );
+      } catch (err) {
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to fetch Reported Data" });
+      }
+    });
+
     // Insert Report Data on MongoDB
     app.post("/api/reports", async (req, res) => {
       try {
