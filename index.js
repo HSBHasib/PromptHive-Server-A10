@@ -464,7 +464,7 @@ async function run() {
     app.get("/api/reports", async (req, res) => {
       try {
         const result = await reportCollection.find().toArray();
-        res.status(200).send( result );
+        res.status(200).send(result);
       } catch (err) {
         res
           .status(500)
@@ -489,6 +489,25 @@ async function run() {
         res
           .status(500)
           .send({ success: false, message: "Failed to submit report" });
+      }
+    });
+
+    // Delete Reported Data From MongoDB
+    app.delete("/api/reports/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        const result = await reportCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({
+          success: false,
+          message: "Failed to delete report",
+          error: err.message,
+        });
       }
     });
 
