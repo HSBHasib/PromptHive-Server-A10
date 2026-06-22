@@ -530,6 +530,53 @@ async function run() {
       }
     });
 
+    //==================== Subcription ====================
+    
+
+
+    //==================== Subcription ====================
+    app.post("/api/subcriptions", async (req, res) => {
+      try {
+        const data = req.body;
+
+        if (!data.billingEmail || !data.plan) {
+          return res
+            .status(400)
+            .json({ message: "User ID and Plan are required" });
+        }
+
+        // Insert Subcription Data
+        const result = await subcriptionCollection.insertOne(data);
+
+        // Match userId for update user plan data
+        const filter = { email: data.billingEmail };
+        const updateDocument = {
+          $set: {
+            plan: data.plan,
+          },
+        };
+
+        const updateUser = await userCollection.updateOne(
+          filter,
+          updateDocument,
+        );
+
+        res.status(200).json({
+          subcribtion: result,
+          updateUser,
+        });
+      } catch (error) {
+        if (error.name === "BSONTypeError") {
+          return res.status(400).json({ message: "Invalid User ID format" });
+        }
+
+        res.status(500).json({
+          message: "Internal Server Error",
+          error: error.message,
+        });
+      }
+    });
+
     await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!",
