@@ -531,10 +531,25 @@ async function run() {
     });
 
     //==================== Subcription ====================
-    
+    // Get Subcriptions Data from MongoDB
+    app.get("/api/subcriptions", async (req, res) => {
+      try {
+        const result = await subcriptionCollection
+          .find({})
+          .sort({ createdAt: -1 })
+          .toArray();
 
+        res.status(200).json(result);
+      } catch (error) {
+        console.error("Fetch Subscription Error:", error);
+        res.status(500).json({
+          message: "Failed to fetch subscriptions",
+          error: error.message,
+        });
+      }
+    });
 
-    //==================== Subcription ====================
+    // Insert Subcriptions Data on MongoDB
     app.post("/api/subcriptions", async (req, res) => {
       try {
         const data = req.body;
