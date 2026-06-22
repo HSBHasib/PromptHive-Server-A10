@@ -38,6 +38,8 @@ async function run() {
     const reviewCollection = db.collection("reviews");
     const bookMarkCollection = db.collection("bookMarks");
     const reportCollection = db.collection("reports");
+    const planCollection = db.collection("plan");
+    const subcriptionCollection = db.collection("subcription");
 
     // ====================  users  ====================
     // Get All Users Data From MongoDB
@@ -508,6 +510,23 @@ async function run() {
           message: "Failed to delete report",
           error: err.message,
         });
+      }
+    });
+
+    // ==================== Plans ====================
+    app.get("/api/plans", async (req, res) => {
+      try {
+        const query = {};
+
+        if (req.query.plan) {
+          query.plan = req.query.plan;
+        }
+
+        const plans = await planCollection.find(query).toArray();
+
+        res.status(200).send(plans);
+      } catch (error) {
+        res.status(500).send({ message: "Failed to fetch plans" });
       }
     });
 
