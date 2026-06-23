@@ -33,13 +33,95 @@ async function run() {
     const db = client.db(process.env.DB_NAME);
 
     // Create or Access to DB Collections
-    const promptCollection = db.collection("prompts");
     const userCollection = db.collection("user");
+    const sessionCollection = db.collection("session");
+    const promptCollection = db.collection("prompts");
     const reviewCollection = db.collection("reviews");
     const bookMarkCollection = db.collection("bookMarks");
     const reportCollection = db.collection("reports");
     const planCollection = db.collection("plan");
     const subcriptionCollection = db.collection("subcription");
+
+    // ====================  Varifications  ====================
+    const verifyToken = async (req, res, next) => {
+      const authHeader = req.headers?.authorization;
+
+      if (!authHeader) {
+        return res.status(401).send({ message: "unauthorized access" });
+      }
+
+      // Access the token
+      const token = authHeader.split(" ")[1];
+
+      console.log("token is -  ", token);
+
+      if (!token) {
+        return res.status(401).send({ message: "unauthorized access" });
+      }
+
+      const query = { token: token };
+      const session = await sessionCollection.findOne(query);
+      if (!session) {
+        return res.status(401).send({ message: "unauthorized access" });
+      }
+
+      const userId = session.userId;
+
+      const userQuery = {
+        _id: userId,
+      };
+
+      const user = await userCollection.findOne(userQuery);
+      if (!user) {
+        return res.status(401).send({ message: "unauthorized access" });
+      }
+
+      // Set data in the req object
+      req.user = user;
+      next();
+    };
+
+    // For Admin
+    const verifyAdmin = async (req, res, next) => {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "forbidden access" });
+      }
+      next();
+    };
+
+    // For User
+    const verifyUser = async (req, res, next) => {
+      if (req.user?.role !== "user") {
+        return res.status(403).json({ message: "forbidden access" });
+      }
+      next();
+    };
+
+    // For Creator
+    const verifyCreator = async (req, res, next) => {
+      if (req.user?.role !== "creator") {
+        return res.status(403).json({ message: "forbidden access" });
+      }
+      next();
+    };
+
+    // For User & Creator
+    const verifyUserOrCreator = (req, res, next) => {
+      const allowedRoles = ["user", "creator"];
+      if (!allowedRoles.includes(req.user?.role)) {
+        return res.status(403).json({ message: "forbidden access" });
+      }
+      next();
+    };
+
+    // Verify Is Any auth user
+    const verifyAnyValidRole = (req, res, next) => {
+      const validRoles = ["admin", "user", "creator"];
+      if (!validRoles.includes(req.user?.role)) {
+        return res.status(403).json({ message: "forbidden access" });
+      }
+      next();
+    };
 
     // ====================  users  ====================
     // Get All Users Data From MongoDB
@@ -85,7 +167,7 @@ async function run() {
     });
 
     // Update User Data on MongoDB
-    app.patch("/api/users/:id", async (req, res) => {
+    app.patch("/api/users/:id", verifyToken, verifyAdmin, async (req, res) => {
       try {
         const { id } = req.params;
         const user = req.body;
@@ -120,7 +202,7 @@ async function run() {
     });
 
     // Delete User Data From MongoDB
-    app.delete("/api/users/:id", async (req, res) => {
+    app.delete("/api/users/:id", verifyToken, verifyAdmin, async (req, res) => {
       try {
         const { id } = req.params;
 
@@ -260,7 +342,7 @@ async function run() {
     });
 
     // Insert New Created Prompt Data on 'MongoDB'
-    app.post("/api/prompts", async (req, res) => {
+    app.post("/api/prompts", verifyToken, verifyUserOrCreator, async (req, res) => {
       try {
         const prompt = req.body;
 
@@ -281,7 +363,7 @@ async function run() {
     });
 
     // Update Prompt Data
-    app.patch("/api/my-prompt/:id", async (req, res) => {
+    app.patch("/api/my-prompt/:id", verifyToken, verifyUserOrCreator, async (req, res) => {
       try {
         const { id } = req.params;
         const { ...updatedPrompt } = req.body;
@@ -316,7 +398,7 @@ async function run() {
     });
 
     // Update Prompt CopyCount
-    app.patch("/api/prompts/copy-count/:id", async (req, res) => {
+    app.patch("/api/prompts/copy-count/:id", verifyToken, verifyAnyValidRole, async (req, res) => {
       try {
         const { id } = req.params;
         const result = await promptCollection.updateOne(
@@ -332,7 +414,7 @@ async function run() {
     });
 
     // Delete Prompt Data
-    app.delete("/api/my-prompt/:id", async (req, res) => {
+    app.delete("/api/my-prompt/:id", verifyToken, verifyAnyValidRole, async (req, res) => {
       try {
         const { id } = req.params;
 
@@ -359,7 +441,7 @@ async function run() {
 
     // ====================  Reviews  ====================
     // Get Reviews Data From MongoDB
-    app.get("/api/reviews", async (req, res) => {
+    app.get("/api/reviews",  async (req, res) => {
       try {
         const { promptId, userId } = req.query;
 
@@ -387,7 +469,7 @@ async function run() {
     });
 
     // Insert Review Data on MongoDB
-    app.post("/api/reviews", async (req, res) => {
+    app.post("/api/reviews", verifyToken, verifyAnyValidRole, async (req, res) => {
       try {
         const reviewData = req.body;
         const review = {
@@ -463,7 +545,7 @@ async function run() {
 
     // ==================== Reports ====================
     // Get Reported Data From MongoDB
-    app.get("/api/reports", async (req, res) => {
+    app.get("/api/reports", verifyToken, verifyAdmin, async (req, res) => {
       try {
         const result = await reportCollection.find().toArray();
         res.status(200).send(result);
@@ -475,64 +557,79 @@ async function run() {
     });
 
     // Insert Report Data on MongoDB
-    app.post("/api/reports", async (req, res) => {
-      try {
-        const { promptId, userId, reason, details } = req.body;
-        const newReport = {
-          promptId,
-          userId,
-          reason,
-          details,
-          createdAt: new Date(),
-        };
-        const result = await reportCollection.insertOne(newReport);
-        res.status(201).send(result);
-      } catch (err) {
-        res
-          .status(500)
-          .send({ success: false, message: "Failed to submit report" });
-      }
-    });
+    app.post(
+      "/api/reports",
+      verifyToken,
+      verifyUserOrCreator,
+      async (req, res) => {
+        try {
+          const { promptId, userId, reason, details } = req.body;
+          const newReport = {
+            promptId,
+            userId,
+            reason,
+            details,
+            createdAt: new Date(),
+          };
+          const result = await reportCollection.insertOne(newReport);
+          res.status(201).send(result);
+        } catch (err) {
+          res
+            .status(500)
+            .send({ success: false, message: "Failed to submit report" });
+        }
+      },
+    );
 
     // Delete Reported Data From MongoDB
-    app.delete("/api/reports/:id", async (req, res) => {
-      try {
-        const { id } = req.params;
+    app.delete(
+      "/api/reports/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        try {
+          const { id } = req.params;
 
-        const result = await reportCollection.deleteOne({
-          _id: new ObjectId(id),
-        });
+          const result = await reportCollection.deleteOne({
+            _id: new ObjectId(id),
+          });
 
-        res.send(result);
-      } catch (err) {
-        res.status(500).send({
-          success: false,
-          message: "Failed to delete report",
-          error: err.message,
-        });
-      }
-    });
+          res.send(result);
+        } catch (err) {
+          res.status(500).send({
+            success: false,
+            message: "Failed to delete report",
+            error: err.message,
+          });
+        }
+      },
+    );
 
     // ==================== Plans ====================
-    app.get("/api/plans", async (req, res) => {
-      try {
-        const query = {};
+    app.get(
+      "/api/plans",
+      verifyToken,
+      verifyUserOrCreator,
+      async (req, res) => {
+        try {
+          const query = {};
 
-        if (req.query.plan) {
-          query.plan = req.query.plan;
+          if (req.query.plan) {
+            query.plan = req.query.plan;
+          }
+
+          const plans = await planCollection.find(query).toArray();
+
+          res.status(200).send(plans);
+        } catch (error) {
+          res.status(500).send({ message: "Failed to fetch plans" });
         }
-
-        const plans = await planCollection.find(query).toArray();
-
-        res.status(200).send(plans);
-      } catch (error) {
-        res.status(500).send({ message: "Failed to fetch plans" });
-      }
-    });
+      },
+    );
 
     //==================== Subcription ====================
     // Get Subcriptions Data from MongoDB
-    app.get("/api/subcriptions", async (req, res) => {
+    app.get("/api/subcriptions", verifyToken, verifyAdmin, async (req, res) => {
       try {
         const result = await subcriptionCollection
           .find({})
@@ -550,7 +647,7 @@ async function run() {
     });
 
     // Insert Subcriptions Data on MongoDB
-    app.post("/api/subcriptions", async (req, res) => {
+    app.post("/api/subcriptions", verifyToken, async (req, res) => {
       try {
         const data = req.body;
 
