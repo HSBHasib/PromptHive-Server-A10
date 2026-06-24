@@ -53,8 +53,6 @@ async function run() {
       // Access the token
       const token = authHeader.split(" ")[1];
 
-      console.log("token is -  ", token);
-
       if (!token) {
         return res.status(401).send({ message: "unauthorized access" });
       }
@@ -231,20 +229,41 @@ async function run() {
     });
 
     // ====================  Prompts  ====================
-    // Get Top 6 Trending Prompts
+    // // Get Top 6 Trending Prompts
     app.get("/api/trending-prompts", async (req, res) => {
       try {
         const result = await promptCollection
-          .find({})
-          .sort({ rating: -1, copyCount: -1 })
-          .limit(6)
+          .aggregate([
+            {
+              $lookup: {
+                from: "reviews",
+                let: { prompt_id_as_string: { $toString: "$_id" } },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: { $eq: ["$promptId", "$$prompt_id_as_string"] },
+                    },
+                  },
+                ],
+                as: "reviews",
+              },
+            },
+            {
+              $addFields: {
+                averageRating: { $ifNull: [{ $avg: "$reviews.rating" }, 0] },
+              },
+            },
+            { $sort: { averageRating: -1, copyCount: -1 } },
+            { $limit: 6 },
+            { $project: { reviews: 0 } },
+          ])
           .toArray();
 
         res.status(200).send(result);
       } catch (err) {
         res.status(500).send({
           success: false,
-          message: "Failed to fetch landing page prompts",
+          message: "Failed to fetch trending prompts",
           error: err.message,
         });
       }
@@ -253,17 +272,21 @@ async function run() {
     // Get Prompts Data
     app.get("/api/prompts", async (req, res) => {
       try {
-        const { userId, page, limit, search, category, aiTool, difficulty } =
-          req.query;
+        const {
+          userId,
+          page,
+          limit,
+          search,
+          category,
+          aiTool,
+          difficulty,
+          sort,
+        } = req.query;
 
         const query = {};
+        if (userId) query.userId = userId;
 
-        // Access UserId
-        if (userId) {
-          query.userId = userId;
-        }
-
-        // Find Data Based on Search Input
+        // Sort
         if (search) {
           query.$or = [
             { title: { $regex: search, $options: "i" } },
@@ -272,32 +295,59 @@ async function run() {
           ];
         }
 
-        // Find Data Based on Category
-        if (category) {
-          query.category = category;
-        }
+        // Filter
+        if (category && category !== "all")
+          query.category = { $regex: category, $options: "i" };
+        if (aiTool && aiTool !== "all")
+          query.aiTool = { $regex: aiTool, $options: "i" };
+        if (difficulty && difficulty !== "all")
+          query.difficulty = { $regex: difficulty, $options: "i" };
 
-        if (aiTool) {
-          query.aiTool = aiTool;
-        }
-
-        if (difficulty) {
-          query.difficulty = difficulty;
-        }
-
-        // --- Dynamic Pagination ---
+        // Pagination
         const pageNum = parseInt(page) || 1;
         const perPage = parseInt(limit) || 9;
         const skipItem = (pageNum - 1) * perPage;
 
-        // Find Data Based On Condition
-        const cursor = promptCollection
-          .find(query)
-          .sort({ createdAt: -1 })
-          .skip(skipItem)
-          .limit(perPage);
+        const result = await promptCollection
+          .aggregate([
+            { $match: query },
+            {
+              $lookup: {
+                from: "reviews",
+                let: { prompt_id_as_string: { $toString: "$_id" } },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $eq: ["$promptId", "$$prompt_id_as_string"],
+                      },
+                    },
+                  },
+                ],
+                as: "reviews",
+              },
+            },
+            {
+              $addFields: {
+                averageRating: { $ifNull: [{ $avg: "$reviews.rating" }, 0] },
+                totalReviews: { $size: "$reviews" },
+              },
+            },
 
-        const result = await cursor.toArray();
+            // Sort Logic
+            {
+              $sort:
+                sort === "popular"
+                  ? { averageRating: -1 }
+                  : sort === "copied"
+                    ? { copyCount: -1 }
+                    : { createdAt: -1 },
+            },
+            { $skip: skipItem },
+            { $limit: perPage },
+            { $project: { reviews: 0 } },
+          ])
+          .toArray();
 
         // Total Prompts
         const totalPrompts = await promptCollection.countDocuments(query);
@@ -342,106 +392,126 @@ async function run() {
     });
 
     // Insert New Created Prompt Data on 'MongoDB'
-    app.post("/api/prompts", verifyToken, verifyUserOrCreator, async (req, res) => {
-      try {
-        const prompt = req.body;
+    app.post(
+      "/api/prompts",
+      verifyToken,
+      verifyUserOrCreator,
+      async (req, res) => {
+        try {
+          const prompt = req.body;
 
-        const promptData = {
-          ...prompt,
-          createdAt: new Date(),
-        };
+          const promptData = {
+            ...prompt,
+            createdAt: new Date(),
+          };
 
-        const result = await promptCollection.insertOne(promptData);
-        res.status(201).send(result);
-      } catch (err) {
-        res.status(500).send({
-          success: false,
-          message: "Internal Server Error. Something went wrong!",
-          error: err.message,
-        });
-      }
-    });
+          const result = await promptCollection.insertOne(promptData);
+          res.status(201).send(result);
+        } catch (err) {
+          res.status(500).send({
+            success: false,
+            message: "Internal Server Error. Something went wrong!",
+            error: err.message,
+          });
+        }
+      },
+    );
 
     // Update Prompt Data
-    app.patch("/api/my-prompt/:id", verifyToken, verifyUserOrCreator, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const { ...updatedPrompt } = req.body;
+    app.patch(
+      "/api/my-prompt/:id",
+      verifyToken,
+      verifyUserOrCreator,
+      async (req, res) => {
+        try {
+          const { id } = req.params;
+          const { ...updatedPrompt } = req.body;
 
-        if (!id) {
-          return res
-            .status(400)
-            .send({ success: false, message: "Prompt ID is required" });
+          if (!id) {
+            return res
+              .status(400)
+              .send({ success: false, message: "Prompt ID is required" });
+          }
+
+          // Convert MongoDB Object ID
+          const filter = { _id: new ObjectId(id) };
+
+          // Set Updated Data
+          const updatedDocument = {
+            $set: updatedPrompt,
+          };
+
+          // Update data on mongoDB
+          const result = await promptCollection.updateOne(
+            filter,
+            updatedDocument,
+          );
+          res.status(200).send(result);
+        } catch (err) {
+          res.status(500).send({
+            success: false,
+            message: "Failed to update prompt",
+            error: err.message,
+          });
         }
-
-        // Convert MongoDB Object ID
-        const filter = { _id: new ObjectId(id) };
-
-        // Set Updated Data
-        const updatedDocument = {
-          $set: updatedPrompt,
-        };
-
-        // Update data on mongoDB
-        const result = await promptCollection.updateOne(
-          filter,
-          updatedDocument,
-        );
-        res.status(200).send(result);
-      } catch (err) {
-        res.status(500).send({
-          success: false,
-          message: "Failed to update prompt",
-          error: err.message,
-        });
-      }
-    });
+      },
+    );
 
     // Update Prompt CopyCount
-    app.patch("/api/prompts/copy-count/:id", verifyToken, verifyAnyValidRole, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const result = await promptCollection.updateOne(
-          { _id: new ObjectId(id) },
-          { $inc: { copyCount: 1 } },
-        );
-        res.status(200).send(result);
-      } catch (err) {
-        res
-          .status(500)
-          .send({ success: false, message: "Failed to update copy count" });
-      }
-    });
+    app.patch(
+      "/api/prompts/copy-count/:id",
+      verifyToken,
+      verifyAnyValidRole,
+      async (req, res) => {
+        try {
+          const { id } = req.params;
+          const result = await promptCollection.updateOne(
+            { _id: new ObjectId(id) },
+            { $inc: { copyCount: 1 } },
+          );
+          res.status(200).send(result);
+        } catch (err) {
+          res
+            .status(500)
+            .send({ success: false, message: "Failed to update copy count" });
+        }
+      },
+    );
 
     // Delete Prompt Data
-    app.delete("/api/my-prompt/:id", verifyToken, verifyAnyValidRole, async (req, res) => {
-      try {
-        const { id } = req.params;
+    app.delete(
+      "/api/my-prompt/:id",
+      verifyToken,
+      verifyAnyValidRole,
+      async (req, res) => {
+        try {
+          const { id } = req.params;
 
-        // Check Is ID has or not
-        if (!id) {
-          return res
-            .status(400)
-            .send({ success: false, message: "Prompt ID is required" });
+          // Check Is ID has or not
+          if (!id) {
+            return res
+              .status(400)
+              .send({ success: false, message: "Prompt ID is required" });
+          }
+
+          // Convert MongoDB Object ID
+          const filter = { _id: new ObjectId(id) };
+
+          const result = await promptCollection.deleteOne(filter);
+          res.status(200).send(result);
+        } catch (err) {
+          res.status(500).send({
+            success: false,
+            message: "Failed to delete prompt",
+            error: err.message,
+          });
         }
-
-        // Convert MongoDB Object ID
-        const filter = { _id: new ObjectId(id) };
-
-        const result = await promptCollection.deleteOne(filter);
-        res.status(200).send(result);
-      } catch (err) {
-        res.status(500).send({
-          success: false,
-          message: "Failed to delete prompt",
-          error: err.message,
-        });
-      }
-    });
+      },
+    );
 
     // ====================  Reviews  ====================
     // Get Reviews Data From MongoDB
-    app.get("/api/reviews",  async (req, res) => {
+    app.get("/api/reviews", async (req, res) => {
       try {
         const { promptId, userId } = req.query;
 
@@ -469,24 +539,29 @@ async function run() {
     });
 
     // Insert Review Data on MongoDB
-    app.post("/api/reviews", verifyToken, verifyAnyValidRole, async (req, res) => {
-      try {
-        const reviewData = req.body;
-        const review = {
-          ...reviewData,
-          createdAt: new Date(),
-        };
+    app.post(
+      "/api/reviews",
+      verifyToken,
+      verifyAnyValidRole,
+      async (req, res) => {
+        try {
+          const reviewData = req.body;
+          const review = {
+            ...reviewData,
+            createdAt: new Date(),
+          };
 
-        const result = await reviewCollection.insertOne(review);
-        res.status(201).send({ success: true, result });
-      } catch (err) {
-        res.status(500).send({
-          success: false,
-          message: "Failed to post review",
-          error: err.message,
-        });
-      }
-    });
+          const result = await reviewCollection.insertOne(review);
+          res.status(201).send({ success: true, result });
+        } catch (err) {
+          res.status(500).send({
+            success: false,
+            message: "Failed to post review",
+            error: err.message,
+          });
+        }
+      },
+    );
 
     // ==================== BookMarks ====================
     // Get Bookmarks Data
@@ -688,6 +763,7 @@ async function run() {
         });
       }
     });
+    
 
     await client.db("admin").command({ ping: 1 });
     console.log(
