@@ -121,6 +121,9 @@ async function run() {
       next();
     };
 
+
+
+
     // ====================  users  ====================
     // Get All Users Data From MongoDB
     app.get("/api/users", async (req, res) => {
@@ -227,6 +230,9 @@ async function run() {
         });
       }
     });
+
+
+
 
     // ====================  Prompts  ====================
     // // Get Top 6 Trending Prompts
@@ -509,6 +515,9 @@ async function run() {
       },
     );
 
+
+
+
     // ====================  Reviews  ====================
     // Get Reviews Data From MongoDB
     app.get("/api/reviews", async (req, res) => {
@@ -562,6 +571,9 @@ async function run() {
         }
       },
     );
+
+
+
 
     // ==================== BookMarks ====================
     // Get Bookmarks Data
@@ -617,6 +629,9 @@ async function run() {
         });
       }
     });
+
+
+
 
     // ==================== Reports ====================
     // Get Reported Data From MongoDB
@@ -680,6 +695,9 @@ async function run() {
       },
     );
 
+
+
+
     // ==================== Plans ====================
     app.get(
       "/api/plans",
@@ -701,6 +719,9 @@ async function run() {
         }
       },
     );
+
+
+
 
     //==================== Subcription ====================
     // Get Subcriptions Data from MongoDB
@@ -763,7 +784,74 @@ async function run() {
         });
       }
     });
-    
+
+
+
+
+    //==================== Top Creator ====================
+    app.get("/api/top-creators", async (req, res) => {
+      try {
+        const result = await promptCollection
+          .aggregate([
+            {
+              $lookup: {
+                from: "reviews",
+                let: { prompt_id_as_string: { $toString: "$_id" } },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: { $eq: ["$promptId", "$$prompt_id_as_string"] },
+                    },
+                  },
+                  { $project: { rating: 1 } },
+                ],
+                as: "reviews",
+              },
+            },
+            {
+              $addFields: {
+                averageRating: { $ifNull: [{ $avg: "$reviews.rating" }, 0] },
+              },
+            },
+            { $sort: { copyCount: -1, averageRating: -1 } },
+            {
+              $group: {
+                _id: "$userId",
+                bestPrompt: { $first: "$$ROOT" },
+              },
+            },
+            {
+              $lookup: {
+                from: "user",
+                let: { userId_as_oid: { $toObjectId: "$_id" } },
+                pipeline: [
+                  { $match: { $expr: { $eq: ["$_id", "$$userId_as_oid"] } } },
+                  { $project: { name: 1, image: 1, _id: 0 } },
+                ],
+                as: "userDetails",
+              },
+            },
+            { $unwind: "$userDetails" },
+            {
+              $project: {
+                _id: 1,
+                name: "$userDetails.name",
+                image: "$userDetails.image",
+                copyCount: "$bestPrompt.copyCount",
+                averageRating: "$bestPrompt.averageRating",
+              },
+            },
+            { $limit: 4 },
+          ])
+          .toArray();
+
+        res.status(200).send(result);
+      } catch (err) {
+        res
+          .status(500)
+          .send({ success: false, message: "Error", error: err.message });
+      }
+    });
 
     await client.db("admin").command({ ping: 1 });
     console.log(
